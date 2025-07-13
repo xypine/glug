@@ -15,8 +15,8 @@ pub fn progress_bar(current: usize, total: usize) -> String {
     let filled_count = ((current * 10) / total).min(10);
     let empty_count = 10 - filled_count;
 
-    let filled = "🍺".repeat(filled_count);
-    let empty = "⏲".repeat(empty_count);
+    let filled = "🔥".repeat(filled_count);
+    let empty = "🍺".repeat(empty_count);
 
     format!("{}{}", filled, empty)
 }

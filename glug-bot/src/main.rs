@@ -188,7 +188,7 @@ Luotu {}
                 response = format!("{response}\n{a}: {b} {drinks}");
             }
             response = format!(
-                "{response}\n\n{}",
+                "{response}\n\n0 {} 10k",
                 progress_bar(drinks_total as usize, 10_000)
             );
 

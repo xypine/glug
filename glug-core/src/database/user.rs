@@ -5,7 +5,11 @@ use crate::{
     models::user::{NewUser, User},
 };
 
-pub async fn make_admin(conn: &DbConn, tg_nick: &str, admin: bool) -> Result<bool, sqlx::Error> {
+pub async fn make_admin(
+    conn: &DbConn,
+    tg_nick: &str,
+    admin: bool,
+) -> Result<Option<String>, sqlx::Error> {
     let tg_nick = tg_nick.strip_prefix("@").unwrap_or(tg_nick);
     let result = query!(
         r#"
@@ -19,7 +23,11 @@ pub async fn make_admin(conn: &DbConn, tg_nick: &str, admin: bool) -> Result<boo
     .execute(conn)
     .await?;
 
-    Ok(result.rows_affected() == 1)
+    Ok(if result.rows_affected() == 1 {
+        Some(tg_nick.to_owned())
+    } else {
+        None
+    })
 }
 
 pub async fn fetch_user_or_create(
@@ -46,7 +54,6 @@ pub async fn fetch_user_or_create(
     .fetch_optional(conn)
     .await?
     .and_then(|r| {
-        println!("RAW {r:?}");
         let id = r.id?;
         let tg_id = r.tg_id?;
         let tg_nick = r.tg_nick?;
@@ -69,22 +76,30 @@ pub async fn fetch_user_or_create(
     Ok(u)
 }
 
-pub async fn leaderboard(conn: &DbConn) -> Result<Vec<(String, u8)>, sqlx::Error> {
+pub struct LB {
+    pub scores: Vec<(String, u32)>,
+    pub drinks_total: u32,
+}
+pub async fn leaderboard(conn: &DbConn) -> Result<LB, sqlx::Error> {
     let users = query!(
         r#"
         SELECT users.tg_nick, COUNT(drinks.id) AS "drinks" FROM users
         LEFT JOIN drinks ON drinks.user_id = users.id
+        GROUP BY users.id, users.tg_nick
+        ORDER BY COUNT(drinks.id) DESC
     "#
     )
     .fetch_all(conn)
     .await?
     .into_iter()
-    .flat_map(|r| match (r.tg_nick, r.drinks) {
-        (Some(n), d) => Some((n, d)),
-        (_, _) => None,
-    })
-    .map(|(n, d)| (n, d as u8))
+    .inspect(|u| println!("LB {u:?}"))
+    .map(|r| (r.tg_nick, r.drinks as u32))
     .collect::<Vec<_>>();
 
-    Ok(users)
+    let drinks_total: u32 = users.iter().map(|(_u, d)| d).sum();
+
+    Ok(LB {
+        scores: users,
+        drinks_total,
+    })
 }

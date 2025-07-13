@@ -2,7 +2,7 @@ use sqlx::{query, query_scalar};
 
 use crate::{DbConn, models::user::UserId};
 
-pub async fn drink(conn: &DbConn, user_id: UserId, amount: u8) -> Result<bool, sqlx::Error> {
+pub async fn drink(conn: &DbConn, user_id: UserId, amount: u32) -> Result<u32, sqlx::Error> {
     let mut tx = conn.begin().await?;
     let call_id = query_scalar!(
         "INSERT INTO calls (user_id) values (?) RETURNING id",
@@ -11,7 +11,7 @@ pub async fn drink(conn: &DbConn, user_id: UserId, amount: u8) -> Result<bool, s
     .fetch_one(&mut *tx)
     .await?;
     for _ in 0..amount {
-        let result = query!(
+        query!(
             r#"
         INSERT INTO drinks_archive (user_id, call_id) VALUES (?, ?)
     "#,
@@ -20,20 +20,27 @@ pub async fn drink(conn: &DbConn, user_id: UserId, amount: u8) -> Result<bool, s
         )
         .execute(&mut *tx)
         .await?;
-
-        println!("DRANK ${result:#?}");
     }
+
+    let new_total = query_scalar!("SELECT COUNT(*) FROM drinks")
+        .fetch_one(&mut *tx)
+        .await?;
 
     tx.commit().await?;
 
-    Ok(true)
+    Ok(new_total as u32)
 }
 
-pub async fn undrink(conn: &DbConn, user_id: UserId) -> Result<(), sqlx::Error> {
+pub async fn undrink(conn: &DbConn, user_id: UserId) -> Result<u64, sqlx::Error> {
     let result = query!(
         r#"
         WITH last_call AS (
             SELECT * FROM calls WHERE user_id = ?
+            AND (
+                SELECT id FROM drinks_archive
+                WHERE call_id = calls.id 
+                AND deleted_at IS NULL
+            ) IS NOT NULL
             ORDER BY created_at DESC
             LIMIT 1
         )
@@ -48,5 +55,5 @@ pub async fn undrink(conn: &DbConn, user_id: UserId) -> Result<(), sqlx::Error> 
 
     println!("UNDRANK ${result:#?}");
 
-    Ok(())
+    Ok(result.rows_affected())
 }

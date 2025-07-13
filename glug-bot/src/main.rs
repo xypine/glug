@@ -1,13 +1,17 @@
+mod util;
+
 use glug_glug_core::{
     connect_db,
     database::{
         drinks::{drink, undrink},
-        user::{fetch_user_or_create, leaderboard, make_admin},
+        user::{LB, fetch_user_or_create, leaderboard, make_admin},
     },
     models::user::NewUser,
 };
 use log::LevelFilter;
-use teloxide::{prelude::*, utils::command::BotCommands};
+use teloxide::{prelude::*, sugar::request::RequestReplyExt, utils::command::BotCommands};
+
+use crate::util::{format_with_spaces, progress_bar};
 
 #[tokio::main]
 async fn main() {
@@ -27,6 +31,10 @@ async fn main() {
 
     let bot = Bot::from_env();
 
+    bot.set_my_commands(Command::bot_commands())
+        .await
+        .expect("Failed to set commands");
+
     Command::repl(bot, answer).await;
 }
 
@@ -38,17 +46,17 @@ enum Command {
     #[command(description = "näytä tietoja itsestäsi")]
     Omat,
     #[command(
-        aliases = ["j", "drink"],
+        aliases = ["j", "drink", "lörs"],
         description = "tallenna juoma, tai useampi lisäämällä perään numero"
     )]
     Juo(String),
     #[command(
-        aliases = ["uj", "undrink"],
+        aliases = ["uj", "undrink", "eiku"],
         description = "peruuta viimeisin lisäys"
     )]
     Hups,
-    #[command()]
-    Laske,
+    #[command(description = "pimeä tie, hyvää matkaa", alias = "mittari")]
+    Mittari,
     #[command(hide, alias = "op")]
     MakeAdmin(String),
     #[command(hide, alias = "deop")]
@@ -61,8 +69,12 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
         return Ok(());
     };
     let db_conn = connect_db().await.unwrap();
-    let send_msg =
-        async |msg_txt: String| bot.send_message(msg.chat.id, msg_txt).await.map(|_sent| ());
+    let send_msg = async |msg_txt: String| {
+        bot.send_message(msg.chat.id, msg_txt)
+            .reply_to(msg.id)
+            .await
+            .map(|_sent| ())
+    };
     let send_help_msg = || send_msg(Command::descriptions().to_string());
 
     let Ok(user) = fetch_user_or_create(
@@ -92,20 +104,24 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                 return send_help_msg().await;
             }
             let result = make_admin(&db_conn, &new_admin_nick, true).await;
-            return match result {
-                Ok(true) => send_msg(format!("{new_admin_nick} on nyt pääkäyttäjä")).await,
-                Ok(false) | Err(_) => send_msg("Virhe :)".to_owned()).await,
-            };
+            match result {
+                Ok(Some(canonical_nick)) => {
+                    send_msg(format!("@{canonical_nick} on nyt pääkäyttäjä")).await
+                }
+                Ok(None) | Err(_) => send_msg("Virhe :)".to_owned()).await,
+            }
         }
         Command::StripAdmin(old_admin_nick) => {
             if !user.is_admin() {
                 return send_help_msg().await;
             }
             let result = make_admin(&db_conn, &old_admin_nick, false).await;
-            return match result {
-                Ok(true) => send_msg(format!("{old_admin_nick} ei ole enää pääkäyttäjä")).await,
-                Ok(false) | Err(_) => send_msg("Virhe :)".to_owned()).await,
-            };
+            match result {
+                Ok(Some(canonical_nick)) => {
+                    send_msg(format!("@{canonical_nick} ei ole enää pääkäyttäjä")).await
+                }
+                Ok(None) | Err(_) => send_msg("Virhe :)".to_owned()).await,
+            }
         }
         Command::Omat => {
             return send_msg(format!(
@@ -137,36 +153,50 @@ Luotu {}
             }) else {
                 // invalid drink count
                 return send_msg(format!(
-                    "No älä ainakaan juo seuraavaa. \"{input}\" ei käy juomien määrästä 🥴"
+                    "🥴 no älä ainakaan juo seuraavaa. \"{input}\" ei käy juomien määrästä"
                 ))
                 .await;
             };
-            let result = drink(&db_conn, user.id, drink_count).await.unwrap();
-            bot.send_message(msg.chat.id, format!("got '{drink_count:?}'"))
-                .await?
+            let new_total = drink(&db_conn, user.id, drink_count as u32).await.unwrap();
+            return send_msg(format!(
+                "🍻 lisättiin {drink_count} {}, yhteensä {new_total}",
+                if drink_count == 1 { "juoma" } else { "juomaa" }
+            ))
+            .await;
         }
         Command::Hups => {
             let result = undrink(&db_conn, user.id).await.unwrap();
-            bot.send_message(msg.chat.id, format!("peruutettu")).await?
+            return send_msg(format!(
+                "🕊 peruutettiin {result} {}",
+                if result == 1 { "juoma" } else { "juomaa" }
+            ))
+            .await;
         }
-        Command::Laske => {
-            let mut leaderboard = leaderboard(&db_conn).await.unwrap();
-            leaderboard.sort_by_key(|(_a, b)| -(*b as i16));
+        Command::Mittari => {
+            let LB {
+                scores,
+                drinks_total,
+            } = leaderboard(&db_conn).await.unwrap();
 
-            let mut response = "Kaikki juomat".to_owned();
+            let mut response = format!(
+                "{} / 10 000 juomaa yhteensä",
+                format_with_spaces(drinks_total)
+            );
             response = format!("{response}\n{}", "=".repeat(response.len()));
-            for (a, b) in &leaderboard {
+            for (a, b) in &scores {
                 let drinks = if *b == 1 { "juoma" } else { "juomaa" };
                 response = format!("{response}\n{a}: {b} {drinks}");
             }
+            response = format!(
+                "{response}\n\n{}",
+                progress_bar(drinks_total as usize, 10_000)
+            );
 
-            if leaderboard.is_empty() {
+            if scores.is_empty() {
                 response = "Ei juomia".to_owned();
             }
 
-            bot.send_message(msg.chat.id, response).await?
+            return send_msg(response).await;
         }
-    };
-
-    Ok(())
+    }
 }

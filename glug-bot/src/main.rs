@@ -1,6 +1,9 @@
 use glug_glug_core::{
     connect_db,
-    database::user::{fetch_user_or_create, leaderboard},
+    database::{
+        drinks::{drink, undrink},
+        user::{fetch_user_or_create, leaderboard, make_admin},
+    },
     models::user::NewUser,
 };
 use log::LevelFilter;
@@ -32,13 +35,24 @@ async fn main() {
 enum Command {
     #[command(alias = "help", description = "näytä tämä ohje")]
     Apua,
+    #[command(description = "näytä tietoja itsestäsi")]
+    Omat,
     #[command(
         aliases = ["j", "drink"],
         description = "tallenna juoma, tai useampi lisäämällä perään numero"
     )]
     Juo(String),
+    #[command(
+        aliases = ["uj", "undrink"],
+        description = "peruuta viimeisin lisäys"
+    )]
+    Hups,
     #[command()]
     Laske,
+    #[command(hide, alias = "op")]
+    MakeAdmin(String),
+    #[command(hide, alias = "deop")]
+    StripAdmin(String),
 }
 
 async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
@@ -46,22 +60,73 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
         // messages from channels shouldn't be handled
         return Ok(());
     };
-    let conn = connect_db().await.unwrap();
-    let send_error_msg =
-        async |err_msg: &str| bot.send_message(msg.chat.id, err_msg).await.map(|_sent| ());
-    let user = fetch_user_or_create(
-        &conn,
+    let db_conn = connect_db().await.unwrap();
+    let send_msg =
+        async |msg_txt: String| bot.send_message(msg.chat.id, msg_txt).await.map(|_sent| ());
+    let send_help_msg = || send_msg(Command::descriptions().to_string());
+
+    let Ok(user) = fetch_user_or_create(
+        &db_conn,
         NewUser {
             tg_id: tg_user.id.to_string(),
-            tg_nick: tg_user.username.unwrap_or("UNKNOWN".to_owned()),
+            tg_nick: tg_user.username.clone().unwrap_or("UNKNOWN".to_owned()),
         },
     )
     .await
-    .unwrap();
+    else {
+        return send_msg("Tietokantavirhe :)".to_owned()).await;
+    };
+
+    let Some(user) = user else {
+        return send_msg(format!(
+            "Virhe haettaessa käyttäjää {}, {:?} 🥴",
+            tg_user.id, tg_user.username
+        ))
+        .await;
+    };
+
     match cmd {
-        Command::Apua => {
-            bot.send_message(msg.chat.id, Command::descriptions().to_string())
-                .await?
+        Command::Apua => return send_help_msg().await,
+        Command::MakeAdmin(new_admin_nick) => {
+            if !user.is_admin() {
+                return send_help_msg().await;
+            }
+            let result = make_admin(&db_conn, &new_admin_nick, true).await;
+            return match result {
+                Ok(true) => send_msg(format!("{new_admin_nick} on nyt pääkäyttäjä")).await,
+                Ok(false) | Err(_) => send_msg("Virhe :)".to_owned()).await,
+            };
+        }
+        Command::StripAdmin(old_admin_nick) => {
+            if !user.is_admin() {
+                return send_help_msg().await;
+            }
+            let result = make_admin(&db_conn, &old_admin_nick, false).await;
+            return match result {
+                Ok(true) => send_msg(format!("{old_admin_nick} ei ole enää pääkäyttäjä")).await,
+                Ok(false) | Err(_) => send_msg("Virhe :)".to_owned()).await,
+            };
+        }
+        Command::Omat => {
+            return send_msg(format!(
+                r#"{} "{}"
+========={}
+Luotu {}
+{} {} yhteensä
+            "#,
+                match (user.admin, user.is_admin()) {
+                    (true, true) => "Järjestelmäkäyttäjä",
+                    (true, false) => "Pääkäyttäjä",
+                    (false, true) => "Järjestelmäkäyttäjä*",
+                    _ => "Käyttäjä",
+                },
+                user.tg_nick,
+                "=".repeat(user.tg_nick.len()),
+                user.created_at.format("%d/%m/%Y"),
+                user.drinks,
+                if user.drinks == 1 { "juoma" } else { "juomaa" }
+            ))
+            .await;
         }
         Command::Juo(input) => {
             let input = input.trim();
@@ -71,16 +136,21 @@ async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
                 input.parse::<u8>().ok()
             }) else {
                 // invalid drink count
-                return send_error_msg(&format!(
+                return send_msg(format!(
                     "No älä ainakaan juo seuraavaa. \"{input}\" ei käy juomien määrästä 🥴"
                 ))
                 .await;
             };
+            let result = drink(&db_conn, user.id, drink_count).await.unwrap();
             bot.send_message(msg.chat.id, format!("got '{drink_count:?}'"))
                 .await?
         }
+        Command::Hups => {
+            let result = undrink(&db_conn, user.id).await.unwrap();
+            bot.send_message(msg.chat.id, format!("peruutettu")).await?
+        }
         Command::Laske => {
-            let mut leaderboard = leaderboard(&conn).await.unwrap();
+            let mut leaderboard = leaderboard(&db_conn).await.unwrap();
             leaderboard.sort_by_key(|(_a, b)| -(*b as i16));
 
             let mut response = "Kaikki juomat".to_owned();

@@ -1,9 +1,26 @@
-use sqlx::{query, query_as};
+use sqlx::query;
 
 use crate::{
     DbConn,
-    models::user::{NewUser, User, UserRaw},
+    models::user::{NewUser, User},
 };
+
+pub async fn make_admin(conn: &DbConn, tg_nick: &str, admin: bool) -> Result<bool, sqlx::Error> {
+    let tg_nick = tg_nick.strip_prefix("@").unwrap_or(tg_nick);
+    let result = query!(
+        r#"
+        UPDATE users
+        SET admin = $2
+        WHERE tg_nick = $1
+    "#,
+        tg_nick,
+        admin
+    )
+    .execute(conn)
+    .await?;
+
+    Ok(result.rows_affected() == 1)
+}
 
 pub async fn fetch_user_or_create(
     conn: &DbConn,
@@ -33,12 +50,15 @@ pub async fn fetch_user_or_create(
         let id = r.id?;
         let tg_id = r.tg_id?;
         let tg_nick = r.tg_nick?;
+        let admin = r.admin?;
         let created_at = r.created_at?;
         let updated_at = r.updated_at?;
         Some(User {
             id,
             tg_id,
             tg_nick,
+            admin,
+            drinks: r.drinks,
             created_at: created_at.and_utc(),
             updated_at: updated_at.and_utc(),
         })

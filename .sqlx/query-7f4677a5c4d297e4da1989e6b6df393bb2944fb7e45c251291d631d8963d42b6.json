@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT users.tg_nick, COUNT(drinks.id) AS \"drinks\" FROM users\n        LEFT JOIN drinks ON drinks.user_id = users.id\n        GROUP BY users.id, users.tg_nick\n        ORDER BY COUNT(drinks.id) DESC\n    ",
+  "describe": {
+    "columns": [
+      {
+        "name": "tg_nick",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "drinks",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "7f4677a5c4d297e4da1989e6b6df393bb2944fb7e45c251291d631d8963d42b6"
+}

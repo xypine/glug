@@ -102,13 +102,8 @@ enum TextEntityType {
     Strikethrough,
 }
 
-fn main() {
-    let mut file = File::open("/home/elias/DataExport_2025-07-14/result.json").unwrap();
-
-    let mut buffer = String::new();
-    file.read_to_string(&mut buffer).unwrap();
-
-    let jd = &mut serde_json::Deserializer::from_str(&buffer);
+pub fn import(source: String) -> Result<String, serde_path_to_error::Error<serde_json::Error>> {
+    let jd = &mut serde_json::Deserializer::from_str(&source);
 
     let result: Result<ExportDocument, _> = serde_path_to_error::deserialize(jd);
     match result {
@@ -119,7 +114,7 @@ fn main() {
 
             let mut nums = vec![None];
 
-            let mut last = 0;
+            let mut last_1 = 0;
             for msg in msgs {
                 if msg.id == 18215 {
                     break;
@@ -137,25 +132,35 @@ fn main() {
                     13058, 13057, 14292, 15648, 15175, 15167, 17686, 8423, 9440, 9176, 9356, 9357,
                     9410, 9415, 9437, 8792, 12182, 10608, 14291, 15153, 15650, 15031, 16222, 17691,
                     16683, 15155, 8410, 8407, 8404, 8403, 8450, 8449, 8444, 8446, 8635, 8574, 9026,
-                    8682, 8686, 8639, 8548, 17685, 8198, 9167,
+                    8682, 8686, 8639, 8548, 17685, 8198, 9167, 8334, 10477, 10479, 10480, 10887,
+                    8383, 8470, 8467, 8708, 8715, 8734, 8869, 9426, 9568, 9592, 9640, 11375, 13563,
+                    10259, 9863, 9858, 9853, 13066, 13497, 13494, 13493, 13492, 17276, 17273,
+                    12184, 10013, 10012,
                 ]
                 .contains(&msg.id)
                 {
                     continue;
                 }
 
-                if [17683, 13955, 13961, 8776].contains(&msg.id) {
-                    let num = last + 1;
+                if [17683, 13955, 13961, 8776, 15159].contains(&msg.id) {
+                    let num = last_1 + 1;
                     println!("MANUAL OVERRIDE {}", num);
                     nums.push(Some((msg.clone(), num, false)));
-                    last = num;
+                    last_1 = num;
                     continue;
                 }
-                if [17269, 8575].contains(&msg.id) {
-                    let num = last + 2;
+                if [17269, 8575, 9969].contains(&msg.id) {
+                    let num = last_1 + 2;
                     println!("MANUAL OVERRIDE 2 {}", num);
                     nums.push(Some((msg.clone(), num, false)));
-                    last = num;
+                    last_1 = num;
+                    continue;
+                }
+                if [13695].contains(&msg.id) {
+                    let num = last_1 + 8;
+                    println!("MANUAL OVERRIDE 8 {}", num);
+                    nums.push(Some((msg.clone(), num, false)));
+                    last_1 = num;
                     continue;
                 }
 
@@ -191,6 +196,7 @@ fn main() {
                     .split_terminator(&[' ', ',', '&', '-', '+', '(', ')'])
                     .flat_map(|w| w.split_whitespace())
                     .filter(|w| !w.ends_with("%")) // we're not interested in percentages
+                    .filter(|w| !w.ends_with("cl")) // nor centiliters
                     .filter(|w| !w.ends_with("€")) // nor currency
                     .filter(|w| !w.ends_with("$"))
                     .filter(|w| !w.contains(":")) // nor times
@@ -207,7 +213,7 @@ fn main() {
                     })
                     .skip(skip_words);
 
-                let mut last_local = last;
+                let mut last_local = last_1;
                 txt.parse::<usize>()
                     .iter()
                     .cloned()
@@ -219,7 +225,7 @@ fn main() {
                         // && (txt.contains(&format!("+{num}"))
                         //     || txt.contains(&format!("+ {num}")))
                         {
-                            num += last;
+                            num += last_1;
                             relative = true;
                         }
 
@@ -229,7 +235,7 @@ fn main() {
                         nums.push(Some((msg.clone(), num, relative)));
                         last_local = num;
                     });
-                last = last_local;
+                last_1 = last_local;
             }
 
             nums.push(None);
@@ -240,11 +246,11 @@ fn main() {
             let mut results = "".to_owned();
             let mut log = "".to_owned();
             let mut valid = 0;
-            let mut valid_sum: i64 = 0;
-            let mut last = 0;
             let mut duplicates = 0;
             let mut duplicates_allowed = 0;
-            let mut by_user = HashMap::<_, i64>::new();
+
+            let mut msgs = vec![];
+
             for window in nums.windows(3) {
                 let (
                     (prev_msg, prev_num, prev_relative),
@@ -259,12 +265,15 @@ fn main() {
                         log.push_str(&format!("EDGE {}", msg.text()));
                         results.push_str(&format!(
                             "{},{},{},{:?}\n",
-                            msg.date, msg.date_unixtime, num, msg.sender
+                            msg.date,
+                            msg.date_unixtime,
+                            num,
+                            msg.sender.name()
                         ));
+                        msgs.push((num + duplicates_allowed, msg.clone()));
                         continue;
                     }
                 };
-                let mut num = num;
 
                 if num == 0 {
                     continue;
@@ -291,7 +300,7 @@ fn main() {
                     // let's assume that if the user used a relative number and then the correct
                     // count, they wanted to add one
                     println!("ALLOW");
-                    num += 1;
+                    // num += 1;
                     duplicates_allowed += 1;
                 }
 
@@ -330,19 +339,15 @@ fn main() {
                 if ((num as f64) - calc_rolling(rolling_average)).abs() < 30.0 || true {
                     results.push_str(&format!(
                         "{},{},{},{:?}\n",
-                        msg.date, msg.date_unixtime, num, msg.sender
+                        msg.date,
+                        msg.date_unixtime,
+                        num + duplicates_allowed,
+                        msg.sender.name()
                     ));
                     rolling_average = ((rolling_average * 4.0) + (num as f64)) / 5.0;
                     println!(" {num} {} {}", rolling_average, msg.text());
                     valid += 1;
-                    let diff = (num as i64) - (last as i64);
-                    valid_sum += diff;
-                    if diff > 0 {
-                        let key = msg.sender.name();
-                        let previous = by_user.get(&key).cloned().unwrap_or_default();
-                        by_user.insert(key, previous + diff);
-                    }
-                    last = num;
+                    msgs.push((num + duplicates_allowed, msg.clone()));
                 } else {
                     println!(
                         "OFF {} {}, {}, {} | {} | {:?} L {} C {} N {}",
@@ -360,6 +365,23 @@ fn main() {
                 }
             }
 
+            let mut valid_sum: i64 = 0;
+            let mut by_user = HashMap::<_, i64>::new();
+
+            let mut last = 66;
+            for (num, msg) in msgs {
+                let diff = (num as i64) - (last as i64);
+                valid_sum += diff;
+                if diff > 0 {
+                    let key = msg.sender.name();
+                    let previous = by_user.get(&key).cloned().unwrap_or_default();
+                    by_user.insert(key, previous + diff);
+                } else {
+                    println!("{diff} {} {}", msg.id, msg.text());
+                }
+                last = num;
+            }
+
             println!("extracted {} entries, totaling {}", valid, valid_sum);
             println!("{duplicates} duplicates, {duplicates_allowed} allowed");
             let mut pairs = by_user.into_iter().collect::<Vec<_>>();
@@ -368,12 +390,24 @@ fn main() {
                 println!("\t{k}\t\t{v}");
             }
 
-            let mut file = File::create("output.txt").unwrap();
-            file.write_all(results.as_bytes()).unwrap();
+            Ok(results)
         }
         Err(err) => {
             println!("ERR PATH {}", err.path());
-            println!("{}", err)
+            println!("{}", err);
+            Err(err)
         }
     }
+}
+
+fn main() {
+    let mut file = File::open("/home/elias/DataExport_2025-07-14/result.json").unwrap();
+
+    let mut buffer = String::new();
+    file.read_to_string(&mut buffer).unwrap();
+
+    let results = import(buffer).unwrap();
+
+    let mut file = File::create("output.txt").unwrap();
+    file.write_all(results.as_bytes()).unwrap();
 }

@@ -13,8 +13,8 @@ pub async fn drink(conn: &DbConn, user_id: UserId, amount: u32) -> Result<u32, s
     for _ in 0..amount {
         query!(
             r#"
-        INSERT INTO drinks_archive (user_id, call_id) VALUES (?, ?)
-    "#,
+                INSERT INTO drinks_archive (user_id, call_id) VALUES (?, ?)
+            "#,
             user_id,
             call_id
         )

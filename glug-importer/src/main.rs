@@ -5,6 +5,8 @@ use std::{
     ptr::copy_nonoverlapping,
 };
 
+use glug_glug_core::{connect_db, database::drinks::import_drinks};
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 struct ExportDocument {
@@ -102,7 +104,15 @@ enum TextEntityType {
     Strikethrough,
 }
 
-pub fn import(source: String) -> Result<String, serde_path_to_error::Error<serde_json::Error>> {
+pub struct ImportedDrink {
+    pub user_tg_id: String,
+    pub user_tg_nick: String,
+    pub timestamp: usize,
+}
+
+pub fn import(
+    source: String,
+) -> Result<Vec<ImportedDrink>, serde_path_to_error::Error<serde_json::Error>> {
     let jd = &mut serde_json::Deserializer::from_str(&source);
 
     let result: Result<ExportDocument, _> = serde_path_to_error::deserialize(jd);
@@ -369,6 +379,7 @@ pub fn import(source: String) -> Result<String, serde_path_to_error::Error<serde
             let mut by_user = HashMap::<_, i64>::new();
 
             let mut last = 66;
+            let mut drinks = vec![];
             for (num, msg) in msgs {
                 let diff = (num as i64) - (last as i64);
                 valid_sum += diff;
@@ -376,6 +387,13 @@ pub fn import(source: String) -> Result<String, serde_path_to_error::Error<serde
                     let key = msg.sender.name();
                     let previous = by_user.get(&key).cloned().unwrap_or_default();
                     by_user.insert(key, previous + diff);
+                    for _ in 0..diff {
+                        drinks.push(ImportedDrink {
+                            user_tg_id: msg.sender.id(),
+                            user_tg_nick: msg.sender.name(),
+                            timestamp: msg.date_unixtime.parse().unwrap(),
+                        });
+                    }
                 } else {
                     println!("{diff} {} {}", msg.id, msg.text());
                 }
@@ -390,7 +408,7 @@ pub fn import(source: String) -> Result<String, serde_path_to_error::Error<serde
                 println!("\t{k}\t\t{v}");
             }
 
-            Ok(results)
+            Ok(drinks)
         }
         Err(err) => {
             println!("ERR PATH {}", err.path());
@@ -400,14 +418,41 @@ pub fn import(source: String) -> Result<String, serde_path_to_error::Error<serde
     }
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let mut file = File::open("/home/elias/DataExport_2025-07-14/result.json").unwrap();
 
     let mut buffer = String::new();
     file.read_to_string(&mut buffer).unwrap();
 
-    let results = import(buffer).unwrap();
+    let drinks = import(buffer).unwrap();
 
-    let mut file = File::create("output.txt").unwrap();
-    file.write_all(results.as_bytes()).unwrap();
+    println!("{}", drinks.len());
+
+    let db_conn = connect_db()
+        .await
+        .expect("Failed to acquire database connection");
+    glug_glug_core::init(&db_conn)
+        .await
+        .expect("Failed to init core");
+    let total = import_drinks(
+        &db_conn,
+        drinks
+            .into_iter()
+            .map(|d| {
+                (
+                    d.user_tg_id.strip_prefix("user").unwrap().to_owned(),
+                    d.user_tg_nick,
+                    d.timestamp,
+                )
+            })
+            .collect(),
+    )
+    .await
+    .unwrap();
+
+    println!("TOTAL {total}");
+
+    // let mut file = File::create("output.txt").unwrap();
+    // file.write_all(results.as_bytes()).unwrap();
 }

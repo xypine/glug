@@ -745,9 +745,11 @@ dependencies = [
 name = "glug-importer"
 version = "0.1.0"
 dependencies = [
+ "glug-glug-core",
  "serde",
  "serde_json",
  "serde_path_to_error",
+ "tokio",
 ]
 
 [[package]]

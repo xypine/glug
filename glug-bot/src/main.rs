@@ -159,7 +159,15 @@ Luotu {}
                 ))
                 .await;
             };
-            let new_total = drink(&db_conn, user.id, drink_count as u32).await.unwrap();
+            let new_total = drink(
+                &db_conn,
+                Some(msg.id.to_string()),
+                None,
+                user.id,
+                drink_count as u32,
+            )
+            .await
+            .unwrap();
             return send_msg(format!(
                 "🍻 lisättiin {drink_count} {}, yhteensä {new_total}",
                 if drink_count == 1 { "juoma" } else { "juomaa" }
@@ -224,6 +232,7 @@ Luotu {}
 
             let Ok(total) = import_drinks(
                 &db_conn,
+                Some(msg.id.to_string()),
                 drinks
                     .into_iter()
                     .map(|d| {
@@ -236,7 +245,7 @@ Luotu {}
                     .collect(),
             )
             .await
-            else {
+            .inspect_err(|e| log::error!("failed to import drinks: {}", e)) else {
                 return send_msg("failed to import drinks".to_owned()).await;
             };
 

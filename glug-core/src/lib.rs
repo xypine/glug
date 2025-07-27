@@ -32,7 +32,14 @@ pub async fn init(db: &DbConn) -> Result<(), sqlx::Error> {
     let difference = (starting_point as i32) - (drinks_total as i32);
     if difference > 0 {
         println!("System will drink {difference} drinks!");
-        drink(db, 0, difference as u32).await?;
+        drink(
+            db,
+            None,
+            Some("starting_point".to_owned()),
+            0,
+            difference as u32,
+        )
+        .await?;
     } else {
         println!("No drinks for the system tonight :(");
     }

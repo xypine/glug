@@ -1,5 +1,3 @@
 [workspace]
 resolver = "3"
 members = ["glug-bot", "glug-core", "glug-importer"]
-
-default-run = ["glug-bot"]

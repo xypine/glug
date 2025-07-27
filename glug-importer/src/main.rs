@@ -26,6 +26,7 @@ async fn main() {
         .expect("Failed to init core");
     let total = import_drinks(
         &db_conn,
+        None,
         drinks
             .into_iter()
             .map(|d| {

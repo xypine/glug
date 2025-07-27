@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                WITH user AS (\n                   SELECT id FROM users WHERE tg_id = ?\n                )\n                INSERT INTO calls (user_id, tg_msg_id, automation)\n                VALUES (\n                    (SELECT id FROM user),\n                    ?,\n                    'import'\n                )\n                RETURNING calls.id, calls.user_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer"
+      },
+      {
+        "name": "user_id",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "6e652299ea288ac870597b283bc5e1276d229cb34f508fe2c5ff91bdce28b125"
+}

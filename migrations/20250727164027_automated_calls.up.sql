@@ -1,0 +1,2 @@
+ALTER TABLE calls ADD COLUMN automation TEXT;
+ALTER TABLE calls ADD COLUMN tg_msg_id TEXT;

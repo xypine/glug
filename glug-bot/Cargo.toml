@@ -2,6 +2,7 @@
 name = "glug-glug-bot"
 version = "0.1.0"
 edition = "2024"
+default-run = "glug-glug-bot"
 
 [dependencies]
 teloxide = { version = "0.17.0", default-features = false, features = ["ctrlc_handler", "macros", "rustls"] }

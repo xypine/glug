@@ -8,11 +8,19 @@ use crate::{
     models::user::{NewUser, UserId},
 };
 
-pub async fn drink(conn: &DbConn, user_id: UserId, amount: u32) -> Result<u32, sqlx::Error> {
+pub async fn drink(
+    conn: &DbConn,
+    tg_msg_id: Option<String>,
+    automation: Option<String>,
+    user_id: UserId,
+    amount: u32,
+) -> Result<u32, sqlx::Error> {
     let mut tx = conn.begin().await?;
     let call_id = query_scalar!(
-        "INSERT INTO calls (user_id) values (?) RETURNING id",
-        user_id
+        "INSERT INTO calls (user_id, tg_msg_id, automation) values (?, ?, ?) RETURNING id",
+        user_id,
+        tg_msg_id,
+        automation
     )
     .fetch_one(&mut *tx)
     .await?;
@@ -39,6 +47,7 @@ pub async fn drink(conn: &DbConn, user_id: UserId, amount: u32) -> Result<u32, s
 
 pub async fn import_drinks(
     conn: &DbConn,
+    trigger_msg_id: Option<String>,
     drinks: Vec<(String, String, usize)>,
 ) -> Result<u32, sqlx::Error> {
     query!(
@@ -46,6 +55,15 @@ pub async fn import_drinks(
             UPDATE drinks_archive
             SET deleted_at = CURRENT_TIMESTAMP
             WHERE user_id = 0
+        "#,
+    )
+    .execute(conn)
+    .await?;
+    query!(
+        r#"
+            UPDATE drinks_archive
+            SET deleted_at = CURRENT_TIMESTAMP
+            WHERE call_id IN (SELECT id FROM calls WHERE automation = 'import')
         "#,
     )
     .execute(conn)
@@ -71,10 +89,16 @@ pub async fn import_drinks(
                 WITH user AS (
                    SELECT id FROM users WHERE tg_id = ?
                 )
-                INSERT INTO calls (user_id)
-                SELECT id FROM user RETURNING calls.id, calls.user_id
+                INSERT INTO calls (user_id, tg_msg_id, automation)
+                VALUES (
+                    (SELECT id FROM user),
+                    ?,
+                    'import'
+                )
+                RETURNING calls.id, calls.user_id
             "#,
-            tg_id
+            tg_id,
+            trigger_msg_id
         )
         .fetch_one(&mut *tx)
         .await?;

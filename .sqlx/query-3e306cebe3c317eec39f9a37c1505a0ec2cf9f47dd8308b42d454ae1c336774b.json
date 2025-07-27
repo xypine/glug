@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO drinks_archive (user_id, call_id) VALUES (?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "3e306cebe3c317eec39f9a37c1505a0ec2cf9f47dd8308b42d454ae1c336774b"
+}

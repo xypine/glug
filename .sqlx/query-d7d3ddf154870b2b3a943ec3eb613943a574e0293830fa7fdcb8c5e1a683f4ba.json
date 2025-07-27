@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "INSERT INTO calls (user_id) values (?) RETURNING id",
+  "query": "INSERT INTO calls (user_id, tg_msg_id, automation) values (?, ?, ?) RETURNING id",
   "describe": {
     "columns": [
       {
@@ -10,11 +10,11 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 3
     },
     "nullable": [
       false
     ]
   },
-  "hash": "e7b2cfe59ff21e876dca78dd93649c6b3b37aa4196812b5ca43dce1ab35e45ca"
+  "hash": "d7d3ddf154870b2b3a943ec3eb613943a574e0293830fa7fdcb8c5e1a683f4ba"
 }

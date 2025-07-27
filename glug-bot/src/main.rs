@@ -3,7 +3,7 @@ mod util;
 use glug_glug_core::{
     connect_db,
     database::{
-        drinks::{drink, undrink},
+        drinks::{drink, import_drinks, undrink},
         user::{LB, fetch_user_or_create, leaderboard, make_admin},
     },
     models::user::NewUser,
@@ -61,10 +61,12 @@ enum Command {
     MakeAdmin(String),
     #[command(hide, alias = "deop")]
     StripAdmin(String),
+    #[command(hide)]
+    Import,
 }
 
 async fn answer(bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
-    let Some(tg_user) = msg.from else {
+    let Some(tg_user) = msg.from.clone() else {
         // messages from channels shouldn't be handled
         return Ok(());
     };
@@ -157,7 +159,15 @@ Luotu {}
                 ))
                 .await;
             };
-            let new_total = drink(&db_conn, user.id, drink_count as u32).await.unwrap();
+            let new_total = drink(
+                &db_conn,
+                Some(msg.id.to_string()),
+                None,
+                user.id,
+                drink_count as u32,
+            )
+            .await
+            .unwrap();
             return send_msg(format!(
                 "🍻 lisättiin {drink_count} {}, yhteensä {new_total}",
                 if drink_count == 1 { "juoma" } else { "juomaa" }
@@ -197,6 +207,51 @@ Luotu {}
             }
 
             return send_msg(response).await;
+        }
+        Command::Import => {
+            if !user.is_super_admin() {
+                return send_help_msg().await;
+            }
+
+            let Ok(file_path) = std::env::var("GG_IMPORT_SRC") else {
+                return send_msg("import path not configured".to_owned()).await;
+            };
+
+            let Ok(mut file) = std::fs::File::open(file_path) else {
+                return send_msg("failed to read file".to_owned()).await;
+            };
+
+            let mut buffer = String::new();
+            std::io::Read::read_to_string(&mut file, &mut buffer).unwrap();
+
+            let Ok(drinks) = glug_glug_importer::parse(buffer) else {
+                return send_msg("failed to parse file".to_owned()).await;
+            };
+
+            println!("IMPORTING {} drinks", drinks.len());
+
+            let Ok(total) = import_drinks(
+                &db_conn,
+                Some(msg.id.to_string()),
+                drinks
+                    .into_iter()
+                    .map(|d| {
+                        (
+                            d.user_tg_id.strip_prefix("user").unwrap().to_owned(),
+                            d.user_tg_nick,
+                            d.timestamp,
+                        )
+                    })
+                    .collect(),
+            )
+            .await
+            .inspect_err(|e| log::error!("failed to import drinks: {}", e)) else {
+                return send_msg("failed to import drinks".to_owned()).await;
+            };
+
+            println!("TOTAL OK {total}");
+
+            return send_msg("OK".to_owned()).await;
         }
     }
 }

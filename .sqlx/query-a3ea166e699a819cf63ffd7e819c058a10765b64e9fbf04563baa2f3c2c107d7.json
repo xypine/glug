@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE drinks_archive\n            SET deleted_at = CURRENT_TIMESTAMP\n            WHERE call_id IN (SELECT id FROM calls WHERE automation = 'import')\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "a3ea166e699a819cf63ffd7e819c058a10765b64e9fbf04563baa2f3c2c107d7"
+}

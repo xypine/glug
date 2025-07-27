@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE drinks_archive\n            SET deleted_at = CURRENT_TIMESTAMP\n            WHERE user_id = 0\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "c0bb333e7a88ce5d58e44b1297de71f8de52805959f311e793900776364dd314"
+}

@@ -727,6 +727,7 @@ name = "glug-glug-bot"
 version = "0.1.0"
 dependencies = [
  "glug-glug-core",
+ "glug-glug-importer",
  "log",
  "pretty_env_logger",
  "teloxide",
@@ -742,7 +743,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "glug-importer"
+name = "glug-glug-importer"
 version = "0.1.0"
 dependencies = [
  "glug-glug-core",

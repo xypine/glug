@@ -49,7 +49,10 @@ pub struct User {
 }
 
 impl User {
+    pub fn is_super_admin(&self) -> bool {
+        self.tg_nick == std::env::var("GG_ROOT_ADMIN").unwrap_or_default()
+    }
     pub fn is_admin(&self) -> bool {
-        self.admin || self.tg_nick == std::env::var("GG_ROOT_ADMIN").unwrap_or_default()
+        self.admin || self.is_super_admin()
     }
 }

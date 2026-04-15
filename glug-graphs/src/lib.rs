@@ -34,7 +34,7 @@ pub fn graph(stats: DateStats) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 
         root_area.fill(&RGBColor(22, 31, 40))?;
 
-        let accent = RGBColor(118, 106, 200);
+        let accent = RGBColor(210, 153, 29);
 
         let title_style = (FONT, 50).into_font().color(&accent);
 

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT date(drinks.created_at) AS \"date: NaiveDate\", COUNT(drinks.id) AS \"drinks\" FROM drinks\n        GROUP BY \"date: NaiveDate\"\n        ORDER BY created_at ASC\n    ",
+  "describe": {
+    "columns": [
+      {
+        "name": "date: NaiveDate",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "drinks",
+        "ordinal": 1,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "db5debed25ede75531c29fa7fc3b136a9c59ec7a81e97f1340c706e49c81d1a6"
+}

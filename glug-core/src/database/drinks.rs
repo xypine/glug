@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+use chrono::{DateTime, NaiveDate, NaiveTime};
 use sqlx::{query, query_scalar};
 
 use crate::{
@@ -155,4 +156,112 @@ pub async fn undrink(conn: &DbConn, user_id: UserId) -> Result<u64, sqlx::Error>
     println!("UNDRANK ${result:#?}");
 
     Ok(result.rows_affected())
+}
+
+pub struct DateStat {
+    pub date: NaiveDate,
+    pub drinks_total: u32,
+}
+pub struct DateStats {
+    pub x_min: NaiveDate,
+    pub x_max: NaiveDate,
+    pub y_min: u32,
+    pub y_max: u32,
+    pub stats: Vec<DateStat>,
+}
+impl DateStats {
+    pub fn linear_approx(&self, target_drinks: u32) -> DateStat {
+        if self.y_max >= target_drinks {
+            return DateStat {
+                date: self.x_max,
+                drinks_total: self.y_max,
+            };
+        }
+
+        let x_min = (self
+            .x_min
+            .and_time(NaiveTime::MIN)
+            .and_utc()
+            .timestamp_nanos_opt()
+            .unwrap()
+            / 100_000_000_000) as f64;
+        let x_max = (self
+            .x_max
+            .and_time(NaiveTime::MIN)
+            .and_utc()
+            .timestamp_nanos_opt()
+            .unwrap()
+            / 100_000_000_000) as f64;
+
+        let y_min = self.y_min as f64;
+        let y_max = self.y_max as f64;
+
+        dbg!(x_min, x_max, y_min, y_max);
+
+        let slope = (y_max - y_min) / (x_max - x_min);
+        println!("slope {slope}");
+
+        // x*slope + y_min = target
+        // x*slope = target - y_min
+        // x = (target - y_min) / slope
+
+        let date_nanos = (target_drinks as f64 - y_min) / slope;
+        println!("date_nanos {date_nanos}");
+
+        let date =
+            DateTime::from_timestamp_nanos(((x_min + date_nanos) * 100_000_000_000.0) as i64)
+                .date_naive();
+        println!("date {date}");
+
+        DateStat {
+            date,
+            drinks_total: target_drinks,
+        }
+    }
+}
+pub async fn day_stats(conn: &DbConn) -> Result<Option<DateStats>, sqlx::Error> {
+    let stats = query!(
+        r#"
+        SELECT date(drinks.created_at) AS "date: NaiveDate", COUNT(drinks.id) AS "drinks" FROM drinks
+        GROUP BY "date: NaiveDate"
+        ORDER BY created_at ASC
+    "#
+    )
+    .fetch_all(conn)
+    .await?
+    .into_iter()
+    .map(|r| (r.date, r.drinks as u32))
+    .collect::<Vec<_>>();
+
+    let mut y_min = 0;
+    let mut drinks_total = 0;
+
+    let stats = stats
+        .into_iter()
+        .filter_map(|(date, drinks)| {
+            if drinks_total == 0 {
+                y_min = drinks;
+            }
+            drinks_total += drinks;
+            date.map(|date| DateStat { date, drinks_total })
+        })
+        .collect::<Vec<_>>();
+
+    let Some(first_stat) = stats.first() else {
+        return Ok(None);
+    };
+    let Some(last_stat) = stats.last() else {
+        return Ok(None);
+    };
+
+    let x_min = first_stat.date;
+    let x_max = last_stat.date;
+
+    Ok(Some(DateStats {
+        x_min,
+        x_max,
+        y_min,
+        y_max: drinks_total,
+        stats,
+    }))
 }

@@ -3,13 +3,16 @@ mod util;
 use glug_glug_core::{
     connect_db,
     database::{
-        drinks::{drink, import_drinks, undrink},
+        drinks::{day_stats, drink, import_drinks, undrink},
         user::{LB, fetch_user_or_create, leaderboard, make_admin},
     },
     models::user::NewUser,
 };
+use glug_glug_graphs::graph;
 use log::LevelFilter;
-use teloxide::{prelude::*, sugar::request::RequestReplyExt, utils::command::BotCommands};
+use teloxide::{
+    prelude::*, sugar::request::RequestReplyExt, types::InputFile, utils::command::BotCommands,
+};
 
 use crate::util::{format_with_spaces, progress_bar};
 
@@ -55,8 +58,10 @@ enum Command {
         description = "peruuta viimeisin lisäys"
     )]
     Hups,
-    #[command(description = "pimeä tie, hyvää matkaa", alias = "mittari")]
+    #[command(description = "pimeä tie, mukavaa matkaa", alias = "mittari")]
     Mittari,
+    #[command(description = "tie ajatuksiin", alias = "lb")]
+    Leaderboard,
     #[command(hide, alias = "op")]
     MakeAdmin(String),
     #[command(hide, alias = "deop")]
@@ -182,7 +187,7 @@ Luotu {}
             ))
             .await;
         }
-        Command::Mittari => {
+        Command::Leaderboard => {
             let LB {
                 scores,
                 drinks_total,
@@ -207,6 +212,19 @@ Luotu {}
             }
 
             return send_msg(response).await;
+        }
+        Command::Mittari => {
+            let stats = day_stats(&db_conn)
+                .await
+                .expect("Failed to fetch stats")
+                .expect("No stats to graph");
+
+            let graph_bytes = graph(stats).expect("failed to draw graph");
+
+            bot.send_photo(msg.chat.id, InputFile::memory(graph_bytes))
+                .reply_to(msg.id)
+                .await
+                .map(|_sent| ())
         }
         Command::Import => {
             if !user.is_super_admin() {

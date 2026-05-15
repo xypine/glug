@@ -1,12 +1,13 @@
 use std::io::Cursor;
 
-use chrono::{NaiveTime, Utc};
+use chrono::{NaiveTime, Utc, Duration};
 use glug_glug_core::database::drinks::DateStats;
 use image::{ImageEncoder as _, codecs::png::PngEncoder};
 use plotters::{
     backend::{PixelFormat, RGBPixel},
     prelude::*,
     style::register_font,
+    style::text_anchor::{HPos, Pos, VPos},
 };
 
 const FONT: &str = "sans-serif";
@@ -57,7 +58,8 @@ pub fn graph(stats: DateStats) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
             .set_label_area_size(LabelAreaPosition::Left, 80)
             .set_label_area_size(LabelAreaPosition::Bottom, 40)
             .caption(caption, (FONT, 24).with_color(WHITE))
-            .build_cartesian_2d(stats.x_min..target_approx.date, 0..10_000u32)?;
+            // .monthly() to X-axis range list
+            .build_cartesian_2d((stats.x_min..target_approx.date).monthly(), 0..10_000u32)?;
 
         cc.configure_mesh()
             .axis_style(WHITE.mix(0.5))
@@ -65,7 +67,7 @@ pub fn graph(stats: DateStats) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
             .x_labels(11)
             .y_labels(10)
             .disable_mesh()
-            .x_label_formatter(&|v| v.format("%m/%Y").to_string())
+            .x_label_formatter(&|v| v.format("%m/%y").to_string())
             .y_label_formatter(&|v| format!("{:.1}", v))
             .draw()?;
 
@@ -88,6 +90,72 @@ pub fn graph(stats: DateStats) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
             0,
             accent,
         ))?;
+        
+        // Fancy unnecessary arrow trickery t joonas
+        let last = stats.stats.last().expect("stats.stats must not be empty");
+        let x = last.date;
+        let y = last.drinks_total;
+
+        // layout knobs by LLM
+        let gap = 300u32;
+        let shaft_len = 1000u32;
+        let label_gap = 220u32;
+
+        let shaft_half_width_days = 1; 
+        let px_h = 150u32;  
+
+        // arrowhead
+        let head_steps = 2u32;
+        let head_step_width_days = 2;     
+
+        let y_tip = y.saturating_add(gap);
+        let y_start = y_tip.saturating_add(shaft_len);
+
+
+        cc.draw_series(std::iter::once(Rectangle::new(
+            [
+                (x - Duration::days(shaft_half_width_days), y_tip),
+                (x + Duration::days(shaft_half_width_days), y_start),
+            ],
+            WHITE.filled(),
+        )))?;
+
+        // Build from the top of the head down to the tip
+        for i in 0..head_steps {
+            let i = i as i64;
+
+            let half_w_days = shaft_half_width_days + (i as i64 + 1) * (head_step_width_days as i64);
+
+            let y0 = y_tip.saturating_add((i as u32) * px_h);
+            let y1 = y_tip.saturating_add((i as u32 + 1) * px_h);
+
+            cc.draw_series(std::iter::once(Rectangle::new(
+                [
+                    (x - Duration::days(half_w_days), y0),
+                    (x + Duration::days(half_w_days), y1),
+                ],
+                WHITE.filled(),
+            )))?;
+        }
+
+        // tip pixel
+        cc.draw_series(std::iter::once(Rectangle::new(
+            [
+                (x - chrono::Duration::days(1), y_tip.saturating_sub(px_h / 2)),
+                (x + chrono::Duration::days(1), y_tip.saturating_add(px_h / 2)),
+            ],
+            WHITE.filled(),
+        )))?;
+
+        // label
+        cc.draw_series(std::iter::once(Text::new(
+            x.format("%d/%m/%y").to_string(),
+            (x, y_start.saturating_add(label_gap)),
+            (FONT, 16)
+                .into_font()
+                .color(&WHITE)
+                .pos(Pos::new(HPos::Center, VPos::Bottom)),
+        )))?;
 
         // To avoid the IO failure being ignored silently, we manually call the present function
         root_area.present().expect("Unable to write result to file, please make sure 'plotters-doc-data' dir exists under current dir");

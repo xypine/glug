@@ -7,5 +7,5 @@ edition = "2024"
 chrono = "0.4.44"
 glug-glug-core = { path = "../glug-core/" }
 image = "0.25.10"
-plotters = { version = "0.3.7", default-features = false, features = ["bitmap_backend", "bitmap_encoder", "bitmap_gif", "ab_glyph", "datetime", "boxplot" , "area_series", "line_series", "histogram", "point_series" ]}
+plotters = { version = "0.3.7", default-features = false, features = ["bitmap_backend", "bitmap_encoder", "bitmap_gif", "ab_glyph", "datetime", "boxplot" , "area_series", "line_series", "histogram", "point_series", "chrono" ]}
 tokio = { version =  "1.8", features = ["rt-multi-thread", "macros"] }
